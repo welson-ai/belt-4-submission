@@ -1,4 +1,6 @@
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec, Map};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, Address, Env, Map, Vec, Symbol,
+};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -36,13 +38,13 @@ impl PriceOracle {
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("already initialized");
         }
-        
+
         env.storage().instance().set(&DataKey::Admin, &admin);
     }
 
     pub fn record_price(env: Env, token_a: Address, token_b: Address, price: i128, timestamp: u64) {
         Self::require_admin(env.clone());
-        
+
         if price <= 0 {
             panic!("price must be positive");
         }
@@ -73,8 +75,14 @@ impl PriceOracle {
         };
 
         let new_cumulative_price = if time_elapsed > 0 {
-            price_pair.last_snapshot.cumulative_price
-                .checked_add(price.checked_mul(time_elapsed as i128).unwrap_or_else(|| panic!("overflow")))
+            price_pair
+                .last_snapshot
+                .cumulative_price
+                .checked_add(
+                    price
+                        .checked_mul(time_elapsed as i128)
+                        .unwrap_or_else(|| panic!("overflow")),
+                )
                 .unwrap_or_else(|| panic!("overflow"))
         } else {
             price_pair.last_snapshot.cumulative_price
@@ -88,7 +96,7 @@ impl PriceOracle {
 
         // Update price history (keep only recent snapshots)
         price_pair.price_history.push_back(new_snapshot.clone());
-        
+
         // Trim history if too long
         while price_pair.price_history.len() > MAX_HISTORY_LENGTH {
             price_pair.price_history.remove(0);
@@ -98,13 +106,19 @@ impl PriceOracle {
 
         env.storage().instance().set(&pair_key, &price_pair);
 
-        let topics = (Symbol::short("RECORD_PRICE"), token_a, token_b, price, current_time);
+        let topics = (
+            Symbol::new(&env, "record_price"),
+            token_a,
+            token_b,
+            price,
+            current_time,
+        );
         env.events().publish(topics, ());
     }
 
     pub fn get_twap(env: Env, token_a: Address, token_b: Address, period: u64) -> i128 {
         let pair_key = Self::get_pair_key(token_a.clone(), token_b.clone());
-        
+
         if !env.storage().instance().has(&pair_key) {
             panic!("price pair not found");
         }
@@ -123,8 +137,11 @@ impl PriceOracle {
 
         for snapshot in price_pair.price_history.iter() {
             if snapshot.timestamp >= oldest_timestamp {
-                let next_timestamp = if let Some(next_snapshot) = price_pair.price_history.iter()
-                    .find(|s| s.timestamp > snapshot.timestamp) {
+                let next_timestamp = if let Some(next_snapshot) = price_pair
+                    .price_history
+                    .iter()
+                    .find(|s| s.timestamp > snapshot.timestamp)
+                {
                     next_snapshot.timestamp
                 } else {
                     current_time
@@ -133,7 +150,12 @@ impl PriceOracle {
                 let time_diff = next_timestamp.saturating_sub(snapshot.timestamp);
                 if time_diff > 0 {
                     cumulative_price_in_period = cumulative_price_in_period
-                        .checked_add(snapshot.price.checked_mul(time_diff as i128).unwrap_or_else(|| panic!("overflow")))
+                        .checked_add(
+                            snapshot
+                                .price
+                                .checked_mul(time_diff as i128)
+                                .unwrap_or_else(|| panic!("overflow")),
+                        )
                         .unwrap_or_else(|| panic!("overflow"));
                     total_time_in_period += time_diff;
                 }
@@ -144,13 +166,14 @@ impl PriceOracle {
             return price_pair.last_snapshot.price;
         }
 
-        cumulative_price_in_period.checked_div(total_time_in_period as i128)
+        cumulative_price_in_period
+            .checked_div(total_time_in_period as i128)
             .unwrap_or_else(|| panic!("division error"))
     }
 
     pub fn get_latest_price(env: Env, token_a: Address, token_b: Address) -> i128 {
         let pair_key = Self::get_pair_key(token_a.clone(), token_b.clone());
-        
+
         if !env.storage().instance().has(&pair_key) {
             panic!("price pair not found");
         }
@@ -159,23 +182,28 @@ impl PriceOracle {
         price_pair.last_snapshot.price
     }
 
-    pub fn get_price_history(env: Env, token_a: Address, token_b: Address, limit: u32) -> Vec<PriceSnapshot> {
+    pub fn get_price_history(
+        env: Env,
+        token_a: Address,
+        token_b: Address,
+        limit: u32,
+    ) -> Vec<PriceSnapshot> {
         let pair_key = Self::get_pair_key(token_a.clone(), token_b.clone());
-        
+
         if !env.storage().instance().has(&pair_key) {
             return Vec::new(&env);
         }
 
         let price_pair: PricePair = env.storage().instance().get(&pair_key).unwrap();
         let history_len = price_pair.price_history.len();
-        
+
         if limit == 0 || limit >= history_len {
             return price_pair.price_history;
         }
 
         let start_idx = history_len.saturating_sub(limit);
         let mut result = Vec::new(&env);
-        
+
         for i in start_idx..history_len {
             result.push_back(price_pair.price_history.get(i as u32).unwrap());
         }
@@ -199,7 +227,10 @@ impl PriceOracle {
     }
 
     fn require_admin(env: Env) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin)
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
             .unwrap_or_else(|| panic!("not initialized"));
         admin.require_auth();
     }
@@ -208,53 +239,84 @@ impl PriceOracle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{Address, Env};
+    use soroban_sdk::{
+        testutils::Address as _,
+        Address, Env, String,
+    };
 
     #[test]
     fn test_initialize() {
         let env = Env::default();
+        env.mock_all_auths();
         let admin = Address::generate(&env);
-        
+
         PriceOracle::initialize(env.clone(), admin.clone());
     }
 
     #[test]
     fn test_record_and_get_price() {
         let env = Env::default();
+        env.mock_all_auths();
         let admin = Address::generate(&env);
         let token_a = Address::generate(&env);
         let token_b = Address::generate(&env);
-        
+
         PriceOracle::initialize(env.clone(), admin.clone());
-        
+
         let price = 1500000i128; // 1.5 with 6 decimals
         let timestamp = env.ledger().timestamp();
-        
-        PriceOracle::record_price(env.clone(), token_a.clone(), token_b.clone(), price, timestamp);
-        
-        let latest_price = PriceOracle::get_latest_price(env.clone(), token_a.clone(), token_b.clone());
+
+        PriceOracle::record_price(
+            env.clone(),
+            token_a.clone(),
+            token_b.clone(),
+            price,
+            timestamp,
+        );
+
+        let latest_price =
+            PriceOracle::get_latest_price(env.clone(), token_a.clone(), token_b.clone());
         assert_eq!(latest_price, price);
     }
 
     #[test]
     fn test_twap_calculation() {
         let env = Env::default();
+        env.mock_all_auths();
         let admin = Address::generate(&env);
         let token_a = Address::generate(&env);
         let token_b = Address::generate(&env);
-        
+
         PriceOracle::initialize(env.clone(), admin.clone());
-        
+
         // Record multiple prices over time
         let base_time = 1000000u64;
-        
-        PriceOracle::record_price(env.clone(), token_a.clone(), token_b.clone(), 1000000, base_time);
-        PriceOracle::record_price(env.clone(), token_a.clone(), token_b.clone(), 2000000, base_time + 1000);
-        PriceOracle::record_price(env.clone(), token_a.clone(), token_b.clone(), 1500000, base_time + 2000);
-        
+
+        PriceOracle::record_price(
+            env.clone(),
+            token_a.clone(),
+            token_b.clone(),
+            1000000,
+            base_time,
+        );
+        PriceOracle::record_price(
+            env.clone(),
+            token_a.clone(),
+            token_b.clone(),
+            2000000,
+            base_time + 1000,
+        );
+        PriceOracle::record_price(
+            env.clone(),
+            token_a.clone(),
+            token_b.clone(),
+            1500000,
+            base_time + 2000,
+        );
+
         // Get TWAP over the entire period
         let twap = PriceOracle::get_twap(env.clone(), token_a.clone(), token_b.clone(), 2000);
-        
+
         // TWAP should be somewhere between 1000000 and 2000000
         assert!(twap >= 1000000 && twap <= 2000000);
     }
@@ -262,22 +324,30 @@ mod tests {
     #[test]
     fn test_price_history() {
         let env = Env::default();
+        env.mock_all_auths();
         let admin = Address::generate(&env);
         let token_a = Address::generate(&env);
         let token_b = Address::generate(&env);
-        
+
         PriceOracle::initialize(env.clone(), admin.clone());
-        
+
         // Record multiple prices
         for i in 0..5 {
             let price = (i + 1) * 1000000i128;
-            let timestamp = 1000000u64 + i * 1000;
-            PriceOracle::record_price(env.clone(), token_a.clone(), token_b.clone(), price, timestamp);
+            let timestamp = 1000000u64 + (i as u64) * 1000;
+            PriceOracle::record_price(
+                env.clone(),
+                token_a.clone(),
+                token_b.clone(),
+                price,
+                timestamp,
+            );
         }
-        
-        let history = PriceOracle::get_price_history(env.clone(), token_a.clone(), token_b.clone(), 3);
+
+        let history =
+            PriceOracle::get_price_history(env.clone(), token_a.clone(), token_b.clone(), 3);
         assert_eq!(history.len(), 3);
-        
+
         // Should get the last 3 prices
         assert_eq!(history.get(0).unwrap().price, 3000000);
         assert_eq!(history.get(1).unwrap().price, 4000000);
@@ -287,12 +357,13 @@ mod tests {
     #[test]
     fn test_pair_key_consistency() {
         let env = Env::default();
+        env.mock_all_auths();
         let token_a = Address::generate(&env);
         let token_b = Address::generate(&env);
-        
+
         let key1 = PriceOracle::get_pair_key(token_a.clone(), token_b.clone());
         let key2 = PriceOracle::get_pair_key(token_b.clone(), token_a.clone());
-        
+
         // Should be the same regardless of order
         assert_eq!(key1, key2);
     }
