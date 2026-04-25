@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { ArrowDownUp, AlertTriangle, Settings } from 'lucide-react'
 import { AmmPoolContract, calculatePriceImpact, buildAndSignTransaction, submitTransaction, createToast } from '@/lib/contracts'
 
@@ -28,16 +28,7 @@ export default function SwapCard({ connected, publicKey, reserves, balances, onS
   const [isSwapping, setIsSwapping] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
 
-  useEffect(() => {
-    if (amountIn && reserves.reserve_a > 0 && reserves.reserve_b > 0) {
-      calculateOutput()
-    } else {
-      setAmountOut('')
-      setPriceImpact(0)
-    }
-  }, [amountIn, tokenIn, tokenOut, reserves, calculateOutput])
-
-  const calculateOutput = async () => {
+  const calculateOutput = useCallback(async () => {
     try {
       const amountInNum = parseFloat(amountIn)
       if (isNaN(amountInNum) || amountInNum <= 0) {
@@ -60,7 +51,16 @@ export default function SwapCard({ connected, publicKey, reserves, balances, onS
       setAmountOut('')
       setPriceImpact(0)
     }
-  }
+  }, [amountIn, tokenIn, reserves])
+
+  useEffect(() => {
+    if (amountIn && reserves.reserve_a > 0 && reserves.reserve_b > 0) {
+      calculateOutput()
+    } else {
+      setAmountOut('')
+      setPriceImpact(0)
+    }
+  }, [amountIn, tokenIn, tokenOut, reserves, calculateOutput])
 
   const handleSwapTokens = () => {
     const tempToken = tokenIn

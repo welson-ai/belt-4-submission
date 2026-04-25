@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Navbar from '@/components/Navbar'
 import SwapCard from '@/components/SwapCard'
 import { AmmPoolContract, getWalletBalance } from '@/lib/contracts'
@@ -11,13 +11,6 @@ export default function Home() {
   const [reserves, setReserves] = useState({ reserve_a: 0, reserve_b: 0 })
   const [balances, setBalances] = useState<{ balance: string; asset: string }[]>([])
 
-  useEffect(() => {
-    if (connected && publicKey) {
-      loadReserves()
-      loadBalances()
-    }
-  }, [connected, publicKey, loadBalances])
-
   const loadReserves = async () => {
     try {
       const reservesData = await AmmPoolContract.getReserves()
@@ -27,14 +20,21 @@ export default function Home() {
     }
   }
 
-  const loadBalances = async () => {
+  const loadBalances = useCallback(async () => {
     try {
       const balancesData = await getWalletBalance(publicKey)
       setBalances(balancesData)
     } catch (error) {
       console.error('Failed to load balances:', error)
     }
-  }
+  }, [publicKey])
+
+  useEffect(() => {
+    if (connected && publicKey) {
+      loadReserves()
+      loadBalances()
+    }
+  }, [connected, publicKey, loadBalances])
 
   return (
     <div className="min-h-screen">

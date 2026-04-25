@@ -1,5 +1,5 @@
-import Server from '@stellar/stellar-sdk';
 import { 
+  Horizon,
   TransactionBuilder, 
   Networks,
   BASE_FEE,
@@ -52,7 +52,7 @@ const CONTRACT_CONFIG = {
 };
 
 // Stellar server setup
-export const server = new Server(process.env.NEXT_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org');
+export const server = new Horizon.Server(process.env.NEXT_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org');
 export const networkPassphrase = Networks.TESTNET;
 
 // Helper functions
