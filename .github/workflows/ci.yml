@@ -1,117 +1,226 @@
-name: CI/CD Pipeline
+name: StellarSwap CI/CD
 
 on:
   push:
-    branches: [ main ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+  release:
+    types: [published]
   workflow_dispatch:
 
+env:
+  CARGO_TERM_COLOR: always
+  SOROBAN_NETWORK: testnet
+  SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
+  HORIZON_URL: https://horizon-testnet.stellar.org
+
 jobs:
-  contracts:
-    name: Build and Test Contracts
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: stable
-        components: rustfmt, clippy
-    
-    - name: Install Soroban CLI
-      run: |
-        curl -sSf https://raw.githubusercontent.com/stellar/soroban-tools/latest/install | sh
-        echo "$HOME/.soroban/bin" >> $GITHUB_PATH
-    
-    - name: Check formatting
-      run: cargo fmt --check
-    
-    - name: Run clippy
-      run: cargo clippy -- -D warnings
-    
-    - name: Run tests
-      run: cargo test
-    
-    - name: Build contracts
-      run: |
-        soroban contract build contracts/lp_token
-        soroban contract build contracts/amm_pool
-        soroban contract build contracts/price_oracle
-    
-    - name: Upload contract artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: contract-wasms
-        path: |
-          contracts/lp_token/target/wasm32-unknown-unknown/release/lp_token.wasm
-          contracts/amm_pool/target/wasm32-unknown-unknown/release/amm_pool.wasm
-          contracts/price_oracle/target/wasm32-unknown-unknown/release/price_oracle.wasm
 
-  frontend:
-    name: Build and Test Frontend
+  # ── 1. CONTRACT LINT & FORMAT ──────────────────────────────
+  contract-lint:
+    name: Contract lint & format
     runs-on: ubuntu-latest
-    
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '24'
-        cache: 'npm'
-        cache-dependency-path: frontend/package-lock.json
-    
-    - name: Install dependencies
-      run: |
-        cd frontend
-        npm ci
-    
-    - name: Run linter
-      run: |
-        cd frontend
-        npm run lint
-    
-    - name: Type check
-      run: |
-        cd frontend
-        npm run type-check
-    
-    - name: Build frontend
-      run: |
-        cd frontend
-        npm run build
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2        # cargo cache
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets -- -D warnings
 
+  # ── 2. CONTRACT UNIT TESTS ─────────────────────────────────
+  contract-test:
+    name: Contract unit tests + coverage
+    runs-on: ubuntu-latest
+    needs: contract-lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-tarpaulin   # coverage tool
+      - run: cargo test --all
+      - run: cargo tarpaulin --out Xml --all
+      - uses: codecov/codecov-action@v4      # upload to Codecov
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ── 3. CONTRACT BUILD & WASM SIZE CHECK ───────────────────
+  contract-build:
+    name: Build WASM + size check
+    runs-on: ubuntu-latest
+    needs: contract-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install --locked soroban-cli
+      - run: soroban contract build
+      - name: Check WASM sizes (max 128kb each)
+        run: |
+          for f in target/wasm32-unknown-unknown/release/*.wasm; do
+            size=$(wc -c < "$f")
+            echo "$f: ${size} bytes"
+            if [ "$size" -gt 131072 ]; then
+              echo "FAIL: $f exceeds 128kb limit"
+              exit 1
+            fi
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm-artifacts
+          path: target/wasm32-unknown-unknown/release/*.wasm
+
+  # ── 4. SECURITY AUDIT ─────────────────────────────────────
+  security-audit:
+    name: Security audit (Rust + Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-audit
+      - run: cargo audit
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: cd frontend && npm audit --audit-level=high
+
+  # ── 5. FRONTEND LINT & TYPECHECK ──────────────────────────
+  frontend-lint:
+    name: Frontend lint + typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci
+      - run: cd frontend && npm run lint
+      - run: cd frontend && npm run type-check
+
+  # ── 6. FRONTEND BUILD ─────────────────────────────────────
+  frontend-build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    needs: frontend-lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci
+      - run: cd frontend && npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/.next
+
+  # ── 7. E2E TESTS (Playwright) ─────────────────────────────
+  e2e:
+    name: E2E tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: [contract-build, frontend-build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci
+      - run: cd frontend && npx playwright install --with-deps chromium
+      - run: cd frontend && npx playwright test
+        env:
+          NEXT_PUBLIC_NETWORK: testnet
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+
+  # ── 8. DEPLOY PREVIEW (PR only) ───────────────────────────
+  deploy-preview:
+    name: Deploy preview to Vercel
+    runs-on: ubuntu-latest
+    needs: frontend-build
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install -g vercel
+      - run: vercel deploy --token=${{ secrets.VERCEL_TOKEN }} --yes
+        id: vercel
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚀 Preview deployed: ${{ steps.vercel.outputs.url }}'
+            })
+
+  # ── 9. DEPLOY CONTRACTS TO TESTNET (on merge to main) ─────
   deploy-testnet:
-    name: Deploy to Testnet
+    name: Deploy contracts to testnet
     runs-on: ubuntu-latest
-    needs: [contracts, frontend]
-    if: github.event_name == 'workflow_dispatch'
-    
+    needs: [contract-build, security-audit, e2e]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-    
-    - name: Install Soroban CLI
-      run: |
-        curl -sSf https://raw.githubusercontent.com/stellar/soroban-tools/latest/install | sh
-        echo "$HOME/.soroban/bin" >> $GITHUB_PATH
-    
-    - name: Build contracts
-      run: |
-        soroban contract build contracts/lp_token
-        soroban contract build contracts/amm_pool
-        soroban contract build contracts/price_oracle
-    
-    - name: Deploy contracts
-      env:
-        STELLAR_SECRET_KEY: ${{ secrets.STELLAR_SECRET_KEY }}
-        NETWORK_PASSPHRASE: ${{ secrets.NETWORK_PASSPHRASE }}
-      run: |
-        chmod +x scripts/deploy.sh
-        ./scripts/deploy.sh
-      shell: bash
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install --locked soroban-cli
+      - uses: actions/download-artifact@v4
+        with:
+          name: wasm-artifacts
+          path: wasm/
+      - name: Deploy all contracts
+        run: bash scripts/deploy.sh
+        env:
+          STELLAR_SECRET_KEY: ${{ secrets.STELLAR_SECRET_KEY }}
+          NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+      - name: Save contract IDs to summary
+        run: cat deployed_addresses.json >> $GITHUB_STEP_SUMMARY
+
+  # ── 10. PRODUCTION DEPLOY (on release tag) ────────────────
+  deploy-production:
+    name: Deploy frontend to production
+    runs-on: ubuntu-latest
+    needs: deploy-testnet
+    if: github.event_name == 'release'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install -g vercel
+      - run: vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --yes
+
+  # ── 11. NOTIFY ────────────────────────────────────────────
+  notify:
+    name: Notify Discord on deploy
+    runs-on: ubuntu-latest
+    needs: deploy-testnet
+    if: always()
+    steps:
+      - name: Send Discord notification
+        run: |
+          STATUS="${{ needs.deploy-testnet.result }}"
+          curl -X POST ${{ secrets.DISCORD_WEBHOOK }} \
+            -H "Content-Type: application/json" \
+            -d "{\"content\": \"StellarSwap deploy to testnet: **${STATUS}** on \`${{ github.ref_name }}\`\"}"

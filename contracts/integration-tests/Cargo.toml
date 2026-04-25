@@ -1,0 +1,13 @@
+[package]
+name = "integration-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+soroban-sdk = { workspace = true }
+price_oracle = { path = "../price_oracle" }
+lp_token = { path = "../lp_token" }
+amm_pool = { path = "../amm_pool" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

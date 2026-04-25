@@ -16,7 +16,7 @@ export default function Home() {
       loadReserves()
       loadBalances()
     }
-  }, [connected, publicKey])
+  }, [connected, publicKey, loadBalances])
 
   const loadReserves = async () => {
     try {
@@ -109,7 +109,7 @@ export default function Home() {
               </svg>
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Lightning Fast</h3>
-            <p className="text-gray-600">Instant swaps powered by Stellar's fast settlement times.</p>
+            <p className="text-gray-600">Instant swaps powered by Stellar&apos;s fast settlement times.</p>
           </div>
           
           <div className="text-center">

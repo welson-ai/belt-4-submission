@@ -35,7 +35,7 @@ export default function SwapCard({ connected, publicKey, reserves, balances, onS
       setAmountOut('')
       setPriceImpact(0)
     }
-  }, [amountIn, tokenIn, tokenOut, reserves])
+  }, [amountIn, tokenIn, tokenOut, reserves, calculateOutput])
 
   const calculateOutput = async () => {
     try {

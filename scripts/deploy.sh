@@ -112,6 +112,18 @@ echo "NEXT_PUBLIC_PRICE_ORACLE_CONTRACT=$ORACLE_ID"
 echo "NEXT_PUBLIC_LP_TOKEN_CONTRACT=$LP_TOKEN_ID"
 echo "NEXT_PUBLIC_AMM_POOL_CONTRACT=$AMM_POOL_ID"
 echo ""
+# Save contract addresses for CI
+cat > deployed_addresses.json << EOF
+{
+  "oracle": "$ORACLE_ID",
+  "lp_token": "$LP_TOKEN_ID", 
+  "amm_pool": "$AMM_POOL_ID",
+  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+
+echo "📋 Contract addresses saved to deployed_addresses.json"
+
 echo "🔍 Verify contracts on Stellar Explorer:"
 echo "https://stellar.expert/explorer/testnet/contract/$ORACLE_ID"
 echo "https://stellar.expert/explorer/testnet/contract/$LP_TOKEN_ID"

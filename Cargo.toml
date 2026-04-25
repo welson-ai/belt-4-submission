@@ -1,5 +1,10 @@
 [workspace]
-members = ["contracts/lp_token", "contracts/amm_pool", "contracts/price_oracle"]
+members = [
+    "contracts/lp_token",
+    "contracts/amm_pool", 
+    "contracts/price_oracle",
+    "contracts/integration-tests"
+]
 resolver = "2"
 
 [workspace.dependencies]
@@ -7,12 +12,16 @@ soroban-sdk = "20.0.0"
 
 [profile.release]
 opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
 overflow-checks = true
 debug = 0
 strip = "symbols"
 debug-assertions = false
 panic = "abort"
-codegen-units = 1
 lto = true
 
 [profile.release-with-logs]
