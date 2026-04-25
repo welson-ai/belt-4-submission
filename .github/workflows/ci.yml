@@ -1,0 +1,117 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  contracts:
+    name: Build and Test Contracts
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+    
+    - name: Install Soroban CLI
+      run: |
+        curl -sSf https://raw.githubusercontent.com/stellar/soroban-tools/latest/install | sh
+        echo "$HOME/.soroban/bin" >> $GITHUB_PATH
+    
+    - name: Check formatting
+      run: cargo fmt --check
+    
+    - name: Run clippy
+      run: cargo clippy -- -D warnings
+    
+    - name: Run tests
+      run: cargo test
+    
+    - name: Build contracts
+      run: |
+        soroban contract build contracts/lp_token
+        soroban contract build contracts/amm_pool
+        soroban contract build contracts/price_oracle
+    
+    - name: Upload contract artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: contract-wasms
+        path: |
+          contracts/lp_token/target/wasm32-unknown-unknown/release/lp_token.wasm
+          contracts/amm_pool/target/wasm32-unknown-unknown/release/amm_pool.wasm
+          contracts/price_oracle/target/wasm32-unknown-unknown/release/price_oracle.wasm
+
+  frontend:
+    name: Build and Test Frontend
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install dependencies
+      run: |
+        cd frontend
+        npm ci
+    
+    - name: Run linter
+      run: |
+        cd frontend
+        npm run lint
+    
+    - name: Type check
+      run: |
+        cd frontend
+        npm run type-check
+    
+    - name: Build frontend
+      run: |
+        cd frontend
+        npm run build
+
+  deploy-testnet:
+    name: Deploy to Testnet
+    runs-on: ubuntu-latest
+    needs: [contracts, frontend]
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Install Soroban CLI
+      run: |
+        curl -sSf https://raw.githubusercontent.com/stellar/soroban-tools/latest/install | sh
+        echo "$HOME/.soroban/bin" >> $GITHUB_PATH
+    
+    - name: Build contracts
+      run: |
+        soroban contract build contracts/lp_token
+        soroban contract build contracts/amm_pool
+        soroban contract build contracts/price_oracle
+    
+    - name: Deploy contracts
+      env:
+        STELLAR_SECRET_KEY: ${{ secrets.STELLAR_SECRET_KEY }}
+        NETWORK_PASSPHRASE: ${{ secrets.NETWORK_PASSPHRASE }}
+      run: |
+        chmod +x scripts/deploy.sh
+        ./scripts/deploy.sh
+      shell: bash
