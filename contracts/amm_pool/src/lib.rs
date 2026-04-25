@@ -1,5 +1,5 @@
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, Address, Env, Vec, Symbol, IntoVal,
+    contract, contractimpl, contracttype, symbol_short, token, Address, Env, Vec, Symbol, IntoVal, contractclient,
 };
 
 #[contracttype]
@@ -538,105 +538,128 @@ impl PriceOracleClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{
-        testutils::Address as _,
-        Address, Env,
-    };
+    use soroban_sdk::{testutils::Address as _, Address, Env, String};
+
+    fn setup(env: &Env) -> (
+        Address,          // token_a
+        Address,          // token_b
+        Address,          // lp_token contract
+        Address,          // oracle contract
+        AmmPoolClient,    // amm client
+    ) {
+        env.mock_all_auths();
+
+        let token_a  = Address::generate(env);
+        let token_b  = Address::generate(env);
+
+        // Register dependent contracts so inter-contract calls resolve
+        let lp_token_id = env.register_contract(None, crate::lp_token::LpToken);
+        let oracle_id   = env.register_contract(None, crate::price_oracle::PriceOracle);
+        let amm_id      = env.register_contract(None, AmmPool);
+
+        let lp_client     = crate::lp_token::LpTokenClient::new(env, &lp_token_id);
+        let oracle_client = crate::price_oracle::PriceOracleClient::new(env, &oracle_id);
+        let amm_client    = AmmPoolClient::new(env, &amm_id);
+
+        let admin = Address::generate(env);
+        lp_client.initialize(
+            &admin,
+            &String::from_str(env, "LP Token"),
+            &String::from_str(env, "LPT"),
+            &7u32,
+        );
+        oracle_client.initialize(&admin);
+        amm_client.initialize(&token_a, &token_b, &lp_token_id, &oracle_id);
+
+        (token_a, token_b, lp_token_id, oracle_id, amm_client)
+    }
 
     #[test]
     fn test_initialize() {
         let env = Env::default();
-        env.mock_all_auths();
-        let token_a = Address::generate(&env);
-        let token_b = Address::generate(&env);
-        let lp_token = Address::generate(&env);
-        let oracle = Address::generate(&env);
+        let (token_a, token_b, lp, oracle, client) = setup(&env);
 
-        AmmPool::initialize(
-            env.clone(),
-            token_a.clone(),
-            token_b.clone(),
-            lp_token.clone(),
-            oracle.clone(),
-        );
-
-        let pool_info = AmmPool::get_pool_info(env.clone());
-        assert_eq!(pool_info.token_a, token_a);
-        assert_eq!(pool_info.token_b, token_b);
-        assert_eq!(pool_info.lp_token, lp_token);
-        assert_eq!(pool_info.reserve_a, 0);
-        assert_eq!(pool_info.reserve_b, 0);
-        assert_eq!(pool_info.total_lp_supply, 0);
+        let info = client.get_pool_info();
+        assert_eq!(info.token_a, token_a);
+        assert_eq!(info.token_b, token_b);
+        assert_eq!(info.lp_token, lp);
+        assert_eq!(info.oracle, oracle);
     }
 
     #[test]
-    fn test_add_liquidity_first_provider() {
+    fn test_add_and_remove_liquidity() {
         let env = Env::default();
-        env.mock_all_auths();
-        let token_a = Address::generate(&env);
-        let token_b = Address::generate(&env);
-        let lp_token = Address::generate(&env);
-        let oracle = Address::generate(&env);
+        let (_, _, _, _, client) = setup(&env);
         let user = Address::generate(&env);
 
-        AmmPool::initialize(
-            env.clone(),
-            token_a.clone(),
-            token_b.clone(),
-            lp_token.clone(),
-            oracle.clone(),
-        );
+        let lp_received = client.add_liquidity(&user, &1_000_000i128, &2_000_000i128, &0i128);
+        assert!(lp_received > 0);
 
-        // Mock token transfers would go here in a full test
-        // For now, just test the calculation logic
+        let (reserves_a, reserves_b) = client.get_reserves();
+        assert_eq!(reserves_a, 1_000_000i128);
+        assert_eq!(reserves_b, 2_000_000i128);
 
-        let pool_info = AmmPool::get_pool_info(env.clone());
-        assert_eq!(pool_info.reserve_a, 0);
-        assert_eq!(pool_info.reserve_b, 0);
-        assert_eq!(pool_info.total_lp_supply, 0);
+        let (out_a, out_b) = client.remove_liquidity(&user, &(lp_received / 2), &0i128, &0i128);
+        assert!(out_a > 0);
+        assert!(out_b > 0);
     }
 
     #[test]
-    fn test_swap_calculation() {
+    fn test_swap_changes_reserves() {
         let env = Env::default();
-        env.mock_all_auths();
-        let token_a = Address::generate(&env);
-        let token_b = Address::generate(&env);
-        let lp_token = Address::generate(&env);
-        let oracle = Address::generate(&env);
+        let (token_a, _, _, _, client) = setup(&env);
+        let user = Address::generate(&env);
 
-        AmmPool::initialize(
-            env.clone(),
-            token_a.clone(),
-            token_b.clone(),
-            lp_token.clone(),
-            oracle.clone(),
-        );
+        // Seed liquidity first
+        client.add_liquidity(&user, &10_000_000i128, &10_000_000i128, &0i128);
 
-        // Test price calculation with zero reserves (should return 0)
-        let price = AmmPool::get_price(env.clone(), token_a.clone(), 1000);
-        assert_eq!(price, 0);
+        let (r_a_before, r_b_before) = client.get_reserves();
+        let amount_out = client.swap(&token_a, &1_000_000i128, &0i128);
+
+        let (r_a_after, r_b_after) = client.get_reserves();
+        assert!(amount_out > 0);
+        assert!(r_a_after > r_a_before);   // token_a reserve increased
+        assert!(r_b_after < r_b_before);   // token_b reserve decreased
     }
 
     #[test]
-    fn test_get_reserves() {
+    fn test_fee_stays_in_pool() {
         let env = Env::default();
-        env.mock_all_auths();
-        let token_a = Address::generate(&env);
-        let token_b = Address::generate(&env);
-        let lp_token = Address::generate(&env);
-        let oracle = Address::generate(&env);
+        let (token_a, _, _, _, client) = setup(&env);
+        let user = Address::generate(&env);
 
-        AmmPool::initialize(
-            env.clone(),
-            token_a.clone(),
-            token_b.clone(),
-            lp_token.clone(),
-            oracle.clone(),
-        );
+        client.add_liquidity(&user, &10_000_000i128, &10_000_000i128, &0i128);
 
-        let (reserve_a, reserve_b) = AmmPool::get_reserves(env.clone());
-        assert_eq!(reserve_a, 0);
-        assert_eq!(reserve_b, 0);
+        let amount_in = 1_000_000i128;
+        let amount_out = client.swap(&token_a, &amount_in, &0i128);
+
+        // With 0.3% fee, output must be less than a zero-fee swap
+        let zero_fee_out = amount_in * 10_000_000 / (10_000_000 + amount_in);
+        assert!(amount_out < zero_fee_out);
     }
+
+    #[test]
+    fn test_get_price_quote() {
+        let env = Env::default();
+        let (token_a, _, _, _, client) = setup(&env);
+        let user = Address::generate(&env);
+
+        client.add_liquidity(&user, &10_000_000i128, &10_000_000i128, &0i128);
+
+        let quote = client.get_price(&token_a, &1_000_000i128);
+        assert!(quote > 0);
+        // With equal reserves, quote should be just under 1:1 due to fee
+        assert!(quote < 1_000_000i128);
+    }
+}
+
+#[contractclient(name = "AmmPoolClient")]
+pub trait AmmPool {
+    fn initialize(env: &Env, token_a: &Address, token_b: &Address, lp_token: &Address, oracle: &Address);
+    fn add_liquidity(env: &Env, user: &Address, amount_a: &i128, amount_b: &i128, min_lp: &i128) -> i128;
+    fn remove_liquidity(env: &Env, user: &Address, lp_amount: &i128, min_a: &i128, min_b: &i128) -> (i128, i128);
+    fn swap(env: &Env, user: &Address, token_in: &Address, amount_in: &i128, min_out: &i128) -> i128;
+    fn get_price(env: &Env, token_in: &Address, amount_in: &i128) -> i128;
+    fn get_reserves(env: &Env) -> (i128, i128);
+    fn get_pool_info(env: &Env) -> PoolInfo;
 }

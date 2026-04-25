@@ -1,5 +1,5 @@
 use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Env, Map, Vec, Symbol,
+    contract, contractimpl, contracttype, Address, Env, Map, Vec, Symbol, contractclient,
 };
 
 #[contracttype]
@@ -239,132 +239,96 @@ impl PriceOracle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{
-        testutils::Address as _,
-        Address, Env, String,
-    };
+    use soroban_sdk::{testutils::Address as _, Address, Env};
 
-    #[test]
-    fn test_initialize() {
+    fn setup() -> (Env, Address, PriceOracleClient<'static>) {
         let env = Env::default();
         env.mock_all_auths();
+        let contract_id = env.register_contract(None, PriceOracle);
+        let client = PriceOracleClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
-
-        PriceOracle::initialize(env.clone(), admin.clone());
+        (env, admin, client)
     }
 
     #[test]
-    fn test_record_and_get_price() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let admin = Address::generate(&env);
+    fn test_initialize() {
+        let (_, admin, client) = setup();
+        client.initialize(&admin); // should not panic
+    }
+
+    #[test]
+    fn test_record_and_get_latest_price() {
+        let (env, admin, client) = setup();
         let token_a = Address::generate(&env);
         let token_b = Address::generate(&env);
 
-        PriceOracle::initialize(env.clone(), admin.clone());
+        client.initialize(&admin);
 
-        let price = 1500000i128; // 1.5 with 6 decimals
-        let timestamp = env.ledger().timestamp();
+        let price = 1_500_000i128;
+        let timestamp = 1_000_000u64;
+        client.record_price(&token_a, &token_b, &price, &timestamp);
 
-        PriceOracle::record_price(
-            env.clone(),
-            token_a.clone(),
-            token_b.clone(),
-            price,
-            timestamp,
-        );
-
-        let latest_price =
-            PriceOracle::get_latest_price(env.clone(), token_a.clone(), token_b.clone());
-        assert_eq!(latest_price, price);
+        assert_eq!(client.get_latest_price(&token_a, &token_b), price);
     }
 
     #[test]
     fn test_twap_calculation() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let admin = Address::generate(&env);
+        let (env, admin, client) = setup();
         let token_a = Address::generate(&env);
         let token_b = Address::generate(&env);
 
-        PriceOracle::initialize(env.clone(), admin.clone());
+        client.initialize(&admin);
 
-        // Record multiple prices over time
-        let base_time = 1000000u64;
+        let base = 1_000_000u64;
+        client.record_price(&token_a, &token_b, &1_000_000i128, &base);
+        client.record_price(&token_a, &token_b, &2_000_000i128, &(base + 1000));
+        client.record_price(&token_a, &token_b, &1_500_000i128, &(base + 2000));
 
-        PriceOracle::record_price(
-            env.clone(),
-            token_a.clone(),
-            token_b.clone(),
-            1000000,
-            base_time,
-        );
-        PriceOracle::record_price(
-            env.clone(),
-            token_a.clone(),
-            token_b.clone(),
-            2000000,
-            base_time + 1000,
-        );
-        PriceOracle::record_price(
-            env.clone(),
-            token_a.clone(),
-            token_b.clone(),
-            1500000,
-            base_time + 2000,
-        );
-
-        // Get TWAP over the entire period
-        let twap = PriceOracle::get_twap(env.clone(), token_a.clone(), token_b.clone(), 2000);
-
-        // TWAP should be somewhere between 1000000 and 2000000
-        assert!(twap >= 1000000 && twap <= 2000000);
+        let twap = client.get_twap(&token_a, &token_b, &2000u64);
+        assert!(twap >= 1_000_000 && twap <= 2_000_000);
     }
 
     #[test]
-    fn test_price_history() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let admin = Address::generate(&env);
+    fn test_price_history_limit() {
+        let (env, admin, client) = setup();
         let token_a = Address::generate(&env);
         let token_b = Address::generate(&env);
 
-        PriceOracle::initialize(env.clone(), admin.clone());
+        client.initialize(&admin);
 
-        // Record multiple prices
         for i in 0..5 {
-            let price = (i + 1) * 1000000i128;
-            let timestamp = 1000000u64 + (i as u64) * 1000;
-            PriceOracle::record_price(
-                env.clone(),
-                token_a.clone(),
-                token_b.clone(),
-                price,
-                timestamp,
-            );
+            let price = (i + 1) * 1_000_000i128;
+            let ts    = 1_000_000u64 + (i as u64) * 1000;
+            client.record_price(&token_a, &token_b, &price, &ts);
         }
 
-        let history =
-            PriceOracle::get_price_history(env.clone(), token_a.clone(), token_b.clone(), 3);
+        let history = client.get_price_history(&token_a, &token_b, &3u32);
         assert_eq!(history.len(), 3);
-
-        // Should get the last 3 prices
-        assert_eq!(history.get(0).unwrap().price, 3000000);
-        assert_eq!(history.get(1).unwrap().price, 4000000);
-        assert_eq!(history.get(2).unwrap().price, 5000000);
+        assert_eq!(history.get(0).unwrap().price, 3_000_000i128);
+        assert_eq!(history.get(1).unwrap().price, 4_000_000i128);
+        assert_eq!(history.get(2).unwrap().price, 5_000_000i128);
     }
 
     #[test]
-    fn test_pair_key_consistency() {
-        let env = Env::default();
-        env.mock_all_auths();
+    fn test_pair_key_is_symmetric() {
+        let (env, admin, client) = setup();
         let token_a = Address::generate(&env);
         let token_b = Address::generate(&env);
 
-        let key1 = PriceOracle::get_pair_key(token_a.clone(), token_b.clone());
-        let key2 = PriceOracle::get_pair_key(token_b.clone(), token_a.clone());
+        client.initialize(&admin);
 
-        // Should be the same regardless of order
-        assert_eq!(key1, key2);
+        // Record with a→b, read with b→a — should work
+        client.record_price(&token_a, &token_b, &1_000_000i128, &1_000_000u64);
+        let price = client.get_latest_price(&token_b, &token_a);
+        assert_eq!(price, 1_000_000i128);
     }
+}
+
+#[contractclient(name = "PriceOracleClient")]
+pub trait PriceOracle {
+    fn initialize(env: &Env, admin: &Address);
+    fn record_price(env: &Env, token_a: &Address, token_b: &Address, price: &i128, timestamp: &u64);
+    fn get_latest_price(env: &Env, token_a: &Address, token_b: &Address) -> i128;
+    fn get_twap(env: &Env, token_a: &Address, token_b: &Address, period: &u64) -> i128;
+    fn get_price_history(env: &Env, token_a: &Address, token_b: &Address, limit: &u32) -> Vec<PriceSnapshot>;
 }

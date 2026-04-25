@@ -1,5 +1,5 @@
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol,
+    contract, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol, contractclient,
 };
 
 #[contracttype]
@@ -259,112 +259,149 @@ impl LpToken {
 mod tests {
     use super::*;
     use soroban_sdk::{
-        testutils::Address as _,
+        testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation},
         Address, Env, String,
     };
 
-    #[test]
-    fn test_initialize() {
+    fn setup() -> (Env, Address, LpTokenClient<'static>) {
         let env = Env::default();
         env.mock_all_auths();
+        let contract_id = env.register_contract(None, LpToken);
+        let client = LpTokenClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
-
-        LpToken::initialize(
-            env.clone(),
-            admin.clone(),
-            String::from_str(&env, "Liquidity Pool Token"),
-            String::from_str(&env, "LPT"),
-            7,
-        );
-
-        assert_eq!(
-            LpToken::name(env.clone()),
-            String::from_str(&env, "Liquidity Pool Token")
-        );
-        assert_eq!(LpToken::symbol(env.clone()), String::from_str(&env, "LPT"));
-        assert_eq!(LpToken::decimals(env.clone()), 7);
+        (env, admin, client)
     }
 
     #[test]
-    fn test_mint_burn() {
-        let env = Env::default();
-        let admin = Address::generate(&env);
+    fn test_initialize() {
+        let (env, admin, client) = setup();
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Liquidity Pool Token"),
+            &String::from_str(&env, "LPT"),
+            &7u32,
+        );
+        assert_eq!(client.name(), String::from_str(&env, "Liquidity Pool Token"));
+        assert_eq!(client.symbol(), String::from_str(&env, "LPT"));
+        assert_eq!(client.decimals(), 7u32);
+        assert_eq!(client.total_supply(), 0i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "already initialized")]
+    fn test_double_initialize_panics() {
+        let (env, admin, client) = setup();
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "LP Token"),
+            &String::from_str(&env, "LPT"),
+            &7u32,
+        );
+        // Second call must panic
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "LP Token"),
+            &String::from_str(&env, "LPT"),
+            &7u32,
+        );
+    }
+
+    #[test]
+    fn test_mint_and_burn() {
+        let (env, admin, client) = setup();
         let user = Address::generate(&env);
 
-        LpToken::initialize(
-            env.clone(),
-            admin.clone(),
-            String::from_str(&env, "LP Token"),
-            String::from_str(&env, "LPT"),
-            7,
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "LP Token"),
+            &String::from_str(&env, "LPT"),
+            &7u32,
         );
 
-        LpToken::mint(env.clone(), user.clone(), 1000);
-        assert_eq!(LpToken::balance(env.clone(), user.clone()), 1000);
-        assert_eq!(LpToken::total_supply(env.clone()), 1000);
+        client.mint(&user, &1000i128);
+        assert_eq!(client.balance(&user), 1000i128);
+        assert_eq!(client.total_supply(), 1000i128);
 
-        LpToken::burn(env.clone(), user.clone(), 300);
-        assert_eq!(LpToken::balance(env.clone(), user.clone()), 700);
-        assert_eq!(LpToken::total_supply(env.clone()), 700);
+        client.burn(&user, &400i128);
+        assert_eq!(client.balance(&user), 600i128);
+        assert_eq!(client.total_supply(), 600i128);
     }
 
     #[test]
     fn test_transfer() {
-        let env = Env::default();
-        let admin = Address::generate(&env);
+        let (env, admin, client) = setup();
         let user1 = Address::generate(&env);
         let user2 = Address::generate(&env);
 
-        LpToken::initialize(
-            env.clone(),
-            admin.clone(),
-            String::from_str(&env, "LP Token"),
-            String::from_str(&env, "LPT"),
-            7,
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "LP Token"),
+            &String::from_str(&env, "LPT"),
+            &7u32,
         );
+        client.mint(&user1, &1000i128);
+        client.transfer(&user1, &user2, &300i128);
 
-        LpToken::mint(env.clone(), user1.clone(), 1000);
-
-        LpToken::transfer(env.clone(), user1.clone(), user2.clone(), 300);
-        assert_eq!(LpToken::balance(env.clone(), user1.clone()), 700);
-        assert_eq!(LpToken::balance(env.clone(), user2.clone()), 300);
+        assert_eq!(client.balance(&user1), 700i128);
+        assert_eq!(client.balance(&user2), 300i128);
     }
 
     #[test]
-    fn test_approve_transfer_from() {
-        let env = Env::default();
-        let admin = Address::generate(&env);
-        let owner = Address::generate(&env);
+    fn test_approve_and_transfer_from() {
+        let (env, admin, client) = setup();
+        let owner   = Address::generate(&env);
         let spender = Address::generate(&env);
         let recipient = Address::generate(&env);
 
-        LpToken::initialize(
-            env.clone(),
-            admin.clone(),
-            String::from_str(&env, "LP Token"),
-            String::from_str(&env, "LPT"),
-            7,
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "LP Token"),
+            &String::from_str(&env, "LPT"),
+            &7u32,
         );
+        client.mint(&owner, &1000i128);
+        client.approve(&owner, &spender, &500i128, &0u64);
 
-        LpToken::mint(env.clone(), owner.clone(), 1000);
+        let allowance = client.allowance(&owner, &spender);
+        assert_eq!(allowance.amount, 500i128);
 
-        LpToken::approve(env.clone(), owner.clone(), spender.clone(), 500, 0);
+        client.transfer_from(&spender, &owner, &recipient, &200i128);
 
-        let allowance = LpToken::allowance(env.clone(), owner.clone(), spender.clone());
-        assert_eq!(allowance.amount, 500);
-
-        LpToken::transfer_from(
-            env.clone(),
-            spender.clone(),
-            owner.clone(),
-            recipient.clone(),
-            200,
-        );
-
-        assert_eq!(LpToken::balance(env.clone(), owner.clone()), 800);
-        assert_eq!(LpToken::balance(env.clone(), recipient.clone()), 200);
-
-        let allowance = LpToken::allowance(env.clone(), owner.clone(), spender.clone());
-        assert_eq!(allowance.amount, 300);
+        assert_eq!(client.balance(&owner), 800i128);
+        assert_eq!(client.balance(&recipient), 200i128);
+        assert_eq!(client.allowance(&owner, &spender).amount, 300i128);
     }
+
+    #[test]
+    #[should_panic(expected = "insufficient balance")]
+    fn test_transfer_insufficient_balance_panics() {
+        let (env, admin, client) = setup();
+        let user1 = Address::generate(&env);
+        let user2 = Address::generate(&env);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "LP Token"),
+            &String::from_str(&env, "LPT"),
+            &7u32,
+        );
+        client.mint(&user1, &100i128);
+        client.transfer(&user1, &user2, &999i128); // must panic
+    }
+}
+
+#[contractclient(name = "LpTokenClient")]
+pub trait LpToken {
+    fn initialize(env: &Env, admin: &Address, name: &String, symbol: &String, decimals: &u32);
+    fn mint(env: &Env, to: &Address, amount: &i128);
+    fn burn(env: &Env, from: &Address, amount: &i128);
+    fn transfer(env: &Env, from: &Address, to: &Address, amount: &i128);
+    fn transfer_from(env: &Env, spender: &Address, from: &Address, to: &Address, amount: &i128);
+    fn approve(env: &Env, owner: &Address, spender: &Address, amount: &i128, expires_at: &u64);
+    fn balance(env: &Env, id: &Address) -> i128;
+    fn allowance(env: &Env, from: &Address, spender: &Address) -> AllowanceValue;
+    fn name(env: &Env) -> String;
+    fn symbol(env: &Env) -> String;
+    fn decimals(env: &Env) -> u32;
+    fn total_supply(env: &Env) -> i128;
 }
