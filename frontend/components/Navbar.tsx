@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Menu, X, TrendingUp, Users, BarChart3 } from 'lucide-react'
+import { Menu, X, TrendingUp, Users } from 'lucide-react'
 import { connectWallet, formatAddress } from '@/lib/contracts'
 
 interface NavbarProps {
@@ -26,7 +26,6 @@ export default function Navbar({ connected, publicKey, onConnect }: NavbarProps)
   const navigation = [
     { name: 'Swap', href: '/', icon: TrendingUp },
     { name: 'Pool', href: '/pool', icon: Users },
-    { name: 'Oracle', href: '/oracle', icon: BarChart3 },
   ]
 
   return (
