@@ -59,7 +59,7 @@ export default function PoolCard({ connected, publicKey, reserves, balances, onP
       const txHash = await submitTransaction(transaction)
       
       console.log('Liquidity added:', txHash)
-      createToast('success', 'Liquidity added successfully!')
+      createToast('success', 'Success', 'Liquidity added successfully!')
       
       // Reset form
       setAmountA('')
@@ -69,7 +69,7 @@ export default function PoolCard({ connected, publicKey, reserves, balances, onP
       
     } catch (error) {
       console.error('Failed to add liquidity:', error)
-      createToast('error', 'Failed to add liquidity')
+      createToast('error', 'Error', 'Failed to add liquidity')
     } finally {
       setIsAdding(false)
     }
@@ -94,14 +94,14 @@ export default function PoolCard({ connected, publicKey, reserves, balances, onP
       const txHash = await submitTransaction(transaction)
       
       console.log('Liquidity removed:', txHash)
-      createToast('success', 'Liquidity removed successfully!')
+      createToast('success', 'Success', 'Liquidity removed successfully!')
       
       setLpTokens('')
       onPoolUpdate()
       
     } catch (error) {
       console.error('Failed to remove liquidity:', error)
-      createToast('error', 'Failed to remove liquidity')
+      createToast('error', 'Error', 'Failed to remove liquidity')
     } finally {
       setIsRemoving(false)
     }
