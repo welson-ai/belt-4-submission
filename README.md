@@ -1,5 +1,15 @@
 # StellarSwap - AMM DEX on Stellar
 
+![CI Status](https://github.com/welson-ai/Belt-4/workflows/CI%2FCD%20Pipeline/badge.svg)
+![Rust](https://img.shields.io/badge/rust-stable-orange.svg)
+![Stellar](https://img.shields.io/badge/stellar-soroban-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+
+
+# Submisssion requirements
+## CI/CD pipeline running
+
+
 A production-ready Automated Market Maker (AMM) decentralized exchange built on Stellar using Soroban smart contracts.
 
 ## Features
