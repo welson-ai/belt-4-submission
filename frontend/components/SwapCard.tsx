@@ -114,34 +114,40 @@ export default function SwapCard({ connected, publicKey, reserves, balances, onS
   }
 
   return (
-    <div className="w-full max-w-md">
-      <div className="glass-card rounded-2xl p-6">
+    <div className="w-full max-w-lg sm:max-w-xl">
+      <div className="glass-card rounded-3xl p-4 sm:p-6 lg:p-8">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-gray-900">Swap</h2>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Swap</h2>
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+            className="p-2 sm:p-3 hover:bg-gray-100 rounded-xl transition-all duration-300 hover:scale-105"
           >
-            <Settings className="w-5 h-5 text-gray-600" />
+            <Settings className="w-5 h-5 sm:w-6 sm:h-6 text-gray-600" />
           </button>
         </div>
 
         {/* Settings Panel */}
         {showSettings && (
-          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Slippage Tolerance
-            </label>
-            <div className="grid grid-cols-3 gap-2">
+          <div className="mb-6 p-4 bg-gray-50 rounded-2xl border border-gray-200">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
+              <label className="text-sm font-semibold text-gray-700">Slippage Tolerance</label>
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className="text-gray-500 hover:text-gray-700 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
               {SLIPPAGE_OPTIONS.map((option) => (
                 <button
                   key={option.value}
                   onClick={() => setSlippage(option.value)}
-                  className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                  className={`py-3 px-4 rounded-xl text-sm font-semibold transition-all duration-300 ${
                     slippage === option.value
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                      ? 'btn-primary shadow-lg transform scale-105'
+                      : 'bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 hover:shadow-md hover:scale-105'
                   }`}
                 >
                   {option.label}
@@ -152,134 +158,172 @@ export default function SwapCard({ connected, publicKey, reserves, balances, onS
         )}
 
         {/* Swap Interface */}
-        <div className="space-y-4">
-          {/* Token In */}
-          <div className="bg-gray-50 rounded-xl p-4">
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-sm font-medium text-gray-700">From</label>
-              <select
-                value={tokenIn}
-                onChange={(e: any) => setTokenIn(e.target.value)}
-                className="text-sm font-medium text-gray-900 bg-transparent border-none focus:outline-none cursor-pointer"
-              >
-                <option value="Token A">Token A</option>
-                <option value="Token B">Token B</option>
-              </select>
-            </div>
-            <input
-              type="number"
-              value={amountIn}
-              onChange={(e: any) => setAmountIn(e.target.value)}
-              placeholder="0.0"
-              className="w-full bg-transparent text-2xl font-bold text-gray-900 placeholder-gray-400 border-none focus:outline-none"
-              disabled={!connected}
-            />
-            {connected && (
-              <div className="text-sm text-gray-500 mt-1">
-                Balance: {balances.find(b => b.asset === tokenIn)?.balance || '0'} {tokenIn}
+        <div className="space-y-6">
+          {/* Token Selection */}
+          <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
+            {/* Token In */}
+            <div className="flex-1">
+              <div className="bg-gray-50 rounded-2xl p-4 lg:p-6 border border-gray-200">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
+                  <label className="text-sm font-semibold text-gray-700">From</label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={tokenIn}
+                      onChange={(e: any) => setTokenIn(e.target.value)}
+                      className="text-sm font-medium text-gray-900 bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer py-2 px-3 rounded-xl"
+                    >
+                      <option value="Token A">Token A</option>
+                      <option value="Token B">Token B</option>
+                    </select>
+                    <button
+                      onClick={handleSwapTokens}
+                      className="p-2 lg:hidden hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-105"
+                    >
+                      <ArrowDownUp className="w-5 h-5 text-gray-600" />
+                    </button>
+                  </div>
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={amountIn}
+                    onChange={(e: any) => setAmountIn(e.target.value)}
+                    placeholder="0.0"
+                    step="0.000001"
+                    className="input-field text-xl sm:text-2xl lg:text-3xl font-bold"
+                    disabled={!connected}
+                  />
+                  {connected && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded-lg">
+                      Balance: {balances.find(b => b.asset === tokenIn)?.balance || '0'}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
-
-          {/* Swap Button */}
-          <div className="flex justify-center">
-            <button
-              onClick={handleSwapTokens}
-              className="p-3 bg-white border-2 border-gray-200 rounded-full hover:bg-gray-50 transition-colors duration-200"
-            >
-              <ArrowDownUp className="w-5 h-5 text-gray-600" />
-            </button>
-          </div>
-
-          {/* Token Out */}
-          <div className="bg-gray-50 rounded-xl p-4">
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-sm font-medium text-gray-700">To</label>
-              <select
-                value={tokenOut}
-                onChange={(e: any) => setTokenOut(e.target.value)}
-                className="text-sm font-medium text-gray-900 bg-transparent border-none focus:outline-none cursor-pointer"
-              >
-                <option value="Token A">Token A</option>
-                <option value="Token B">Token B</option>
-              </select>
             </div>
-            <input
-              type="text"
-              value={amountOut}
-              placeholder="0.0"
-              className="w-full bg-transparent text-2xl font-bold text-gray-900 placeholder-gray-400 border-none focus:outline-none"
-              disabled
-              readOnly
-            />
-            {connected && (
-              <div className="text-sm text-gray-500 mt-1">
-                Balance: {balances.find(b => b.asset === tokenOut)?.balance || '0'} {tokenOut}
+
+            {/* Swap Arrow (Desktop Only) */}
+            <div className="hidden lg:flex justify-center items-center">
+              <button
+                onClick={handleSwapTokens}
+                className="p-4 bg-white border-2 border-gray-200 rounded-full hover:bg-gray-50 transition-all duration-300 hover:scale-110"
+              >
+                <ArrowDownUp className="w-6 h-6 text-gray-600" />
+              </button>
+            </div>
+
+            {/* Token Out */}
+            <div className="flex-1">
+              <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-4 lg:p-6 border border-gray-200">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
+                  <label className="text-sm font-semibold text-gray-700">To</label>
+                  <select
+                    value={tokenOut}
+                    onChange={(e: any) => setTokenOut(e.target.value)}
+                    className="text-sm font-medium text-gray-900 bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer py-2 px-3 rounded-xl"
+                  >
+                    <option value="Token A">Token A</option>
+                    <option value="Token B">Token B</option>
+                  </select>
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={amountOut}
+                    placeholder="0.0"
+                    className="input-field text-xl sm:text-2xl lg:text-3xl font-bold"
+                    disabled
+                    readOnly
+                  />
+                  {connected && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded-lg">
+                      Balance: {balances.find(b => b.asset === tokenOut)?.balance || '0'}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+            </div>
           </div>
 
           {/* Price Impact Warning */}
           {priceImpact > 2 && (
-            <div className="flex items-center space-x-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <AlertTriangle className="w-4 h-4 text-red-600" />
-              <span className="text-sm font-medium text-red-800">
-                High price impact: {priceImpact.toFixed(2)}%
-              </span>
+            <div className="flex items-center space-x-3 p-4 bg-red-50 border-2 border-red-200 rounded-2xl animate-pulse-glow">
+              <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0" />
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold text-red-800">High price impact</span>
+                <span className="text-lg font-bold text-red-900">{priceImpact.toFixed(2)}%</span>
+              </div>
             </div>
           )}
 
           {/* Swap Button */}
-          <button
-            onClick={handleSwap}
-            disabled={!connected || !amountIn || isSwapping || isInsufficientBalance()}
-            className={`w-full py-3 px-4 rounded-lg font-medium transition-colors duration-200 ${
-              !connected || !amountIn || isSwapping || isInsufficientBalance()
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'btn-primary'
-            }`}
-          >
-            {isSwapping ? (
-              <span className="flex items-center justify-center">
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Swapping...
-              </span>
-            ) : !connected ? (
-              'Connect Wallet'
-            ) : isInsufficientBalance() ? (
-              'Insufficient Balance'
-            ) : !amountIn ? (
-              'Enter Amount'
-            ) : (
-              `Swap ${tokenIn} → ${tokenOut}`
-            )}
-          </button>
-        </div>
-
-        {/* Swap Info */}
-        {amountIn && amountOut && (
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Price Impact</span>
-              <span className={`font-medium ${priceImpact > 2 ? 'text-red-600' : 'text-gray-900'}`}>
-                {priceImpact.toFixed(2)}%
-              </span>
-            </div>
-            <div className="flex justify-between text-sm mt-2">
-              <span className="text-gray-600">Minimum Received</span>
-              <span className="font-medium text-gray-900">
-                {(parseFloat(amountOut) * (1 - slippage)).toFixed(6)} {tokenOut}
-              </span>
-            </div>
-            <div className="flex justify-between text-sm mt-2">
-              <span className="text-gray-600">Slippage Tolerance</span>
-              <span className="font-medium text-gray-900">{(slippage * 100).toFixed(1)}%</span>
-            </div>
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+            <button
+              onClick={handleSwap}
+              disabled={!connected || !amountIn || isSwapping || isInsufficientBalance()}
+              className={`flex-1 py-4 px-6 rounded-2xl font-bold text-base sm:text-lg transition-all duration-300 ${
+                !connected || !amountIn || isSwapping || isInsufficientBalance()
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'btn-primary hover:shadow-xl transform hover:scale-105 active:scale-95'
+              }`}
+            >
+              {isSwapping ? (
+                <span className="flex items-center justify-center">
+                  <div className="loading-spinner w-5 h-5 sm:w-6 sm:h-6"></div>
+                  <span className="ml-3">Swapping...</span>
+                </span>
+              ) : !connected ? (
+                <span className="flex items-center justify-center">
+                  <div className="w-5 h-5 bg-blue-500 rounded-full mr-2"></div>
+                  Connect Wallet
+                </span>
+              ) : isInsufficientBalance() ? (
+                <span className="flex items-center justify-center">
+                  <div className="w-5 h-5 bg-red-500 rounded-full mr-2"></div>
+                  Insufficient Balance
+                </span>
+              ) : !amountIn ? (
+                <span className="flex items-center justify-center">
+                  <div className="w-5 h-5 bg-yellow-500 rounded-full mr-2"></div>
+                  Enter Amount
+                </span>
+              ) : (
+                <span className="flex items-center justify-center">
+                  <div className="w-5 h-5 bg-green-500 rounded-full mr-2"></div>
+                  {`Swap ${tokenIn} → ${tokenOut}`}
+                </span>
+              )}
+            </button>
           </div>
-        )}
+
+          {/* Swap Info */}
+          {amountIn && amountOut && (
+            <div className="mt-6 pt-6 border-t-2 border-gray-200">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="text-center p-4 bg-gray-50 rounded-xl">
+                  <div className="text-xs font-medium text-gray-500 mb-1">Price Impact</div>
+                  <div className={`text-lg sm:text-xl font-bold ${priceImpact > 2 ? 'text-red-600' : priceImpact > 0.5 ? 'text-yellow-600' : 'text-green-600'}`}>
+                    {priceImpact.toFixed(2)}%
+                  </div>
+                </div>
+                
+                <div className="text-center p-4 bg-blue-50 rounded-xl">
+                  <div className="text-xs font-medium text-gray-500 mb-1">Minimum Received</div>
+                  <div className="text-lg sm:text-xl font-bold text-blue-900">
+                    {(parseFloat(amountOut) * (1 - slippage)).toFixed(6)} {tokenOut}
+                  </div>
+                </div>
+                
+                <div className="text-center p-4 bg-purple-50 rounded-xl">
+                  <div className="text-xs font-medium text-gray-500 mb-1">Slippage Tolerance</div>
+                  <div className="text-lg sm:text-xl font-bold text-purple-900">
+                    {(slippage * 100).toFixed(1)}%
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import Navbar from '@/components/Navbar'
 import SwapCard from '@/components/SwapCard'
+import PoolCard from '@/components/PoolCard'
+import OracleChart from '@/components/OracleChart'
 import { AmmPoolContract, getWalletBalance } from '@/lib/contracts'
 
 export default function Home() {
@@ -10,6 +12,7 @@ export default function Home() {
   const [publicKey, setPublicKey] = useState('')
   const [reserves, setReserves] = useState({ reserve_a: 0, reserve_b: 0 })
   const [balances, setBalances] = useState<{ balance: string; asset: string }[]>([])
+  const [activeTab, setActiveTab] = useState<'swap' | 'pool' | 'oracle'>('swap')
 
   const loadReserves = async () => {
     try {
@@ -44,94 +47,115 @@ export default function Home() {
         onConnect={setConnected}
       />
       
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            StellarSwap AMM
-          </h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Decentralized exchange for Stellar tokens with automated market making.
-            Swap tokens instantly with low fees and minimal slippage.
-          </p>
+      {/* Tab Navigation */}
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
+        <div className="flex justify-center mb-6">
+          <div className="inline-flex rounded-xl bg-gray-100 p-1">
+            <button
+              onClick={() => setActiveTab('swap')}
+              className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${
+                activeTab === 'swap' 
+                  ? 'bg-white text-blue-600 shadow-lg' 
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              Swap
+            </button>
+            <button
+              onClick={() => setActiveTab('pool')}
+              className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${
+                activeTab === 'pool' 
+                  ? 'bg-white text-blue-600 shadow-lg' 
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              Pool
+            </button>
+            <button
+              onClick={() => setActiveTab('oracle')}
+              className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${
+                activeTab === 'oracle' 
+                  ? 'bg-white text-blue-600 shadow-lg' 
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              Oracle
+            </button>
+          </div>
         </div>
+      </div>
 
-        <div className="flex justify-center mb-8">
-          <SwapCard 
-            connected={connected}
-            publicKey={publicKey}
-            reserves={reserves}
-            balances={balances}
-            onSwapComplete={() => {
-              loadReserves()
-              loadBalances()
-            }}
-          />
-        </div>
+      <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-6 lg:py-12">
+        {/* Swap Tab */}
+        {activeTab === 'swap' && (
+          <div className="space-y-8">
+            {/* Hero Section */}
+            <div className="text-center mb-12 lg:mb-16">
+              <div className="mb-6 lg:mb-8">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent mb-4 lg:mb-6">
+                  StellarSwap AMM
+                </h1>
+                <p className="text-base sm:text-lg lg:text-xl text-gray-600 max-w-3xl lg:max-w-4xl mx-auto leading-relaxed">
+                  Decentralized exchange for Stellar tokens with automated market making.
+                  <span className="hidden sm:inline lg:block">Swap tokens instantly with low fees and minimal slippage.</span>
+                </p>
+              </div>
+              
+              <div className="flex justify-center">
+                <SwapCard 
+                  connected={connected}
+                  publicKey={publicKey}
+                  reserves={reserves}
+                  balances={balances}
+                  onSwapComplete={() => {
+                    loadReserves()
+                    loadBalances()
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
-        {/* Pool Statistics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="glass-card p-6 rounded-xl">
-            <h3 className="text-sm font-medium text-gray-500 mb-2">Token A Reserve</h3>
-            <p className="text-2xl font-bold text-gray-900">
-              {reserves.reserve_a.toLocaleString()}
-            </p>
+        {/* Pool Tab */}
+        {activeTab === 'pool' && (
+          <div className="space-y-8">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">Liquidity Management</h2>
+              <p className="text-lg text-gray-600 max-w-3xl mx-auto">
+                Add or remove liquidity from the AMM pool and earn LP tokens.
+              </p>
+            </div>
+            
+            <PoolCard 
+              connected={connected}
+              publicKey={publicKey}
+              reserves={reserves}
+              balances={balances}
+              onPoolUpdate={() => {
+                loadReserves()
+                loadBalances()
+              }}
+            />
           </div>
-          
-          <div className="glass-card p-6 rounded-xl">
-            <h3 className="text-sm font-medium text-gray-500 mb-2">Token B Reserve</h3>
-            <p className="text-2xl font-bold text-gray-900">
-              {reserves.reserve_b.toLocaleString()}
-            </p>
-          </div>
-          
-          <div className="glass-card p-6 rounded-xl">
-            <h3 className="text-sm font-medium text-gray-500 mb-2">Current Price</h3>
-            <p className="text-2xl font-bold text-gray-900">
-              {reserves.reserve_a > 0 ? 
-                (reserves.reserve_b / reserves.reserve_a).toFixed(4) : 
-                '0.0000'
-              }
-            </p>
-          </div>
-          
-          <div className="glass-card p-6 rounded-xl">
-            <h3 className="text-sm font-medium text-gray-500 mb-2">24h Volume</h3>
-            <p className="text-2xl font-bold text-gray-900">$0</p>
-          </div>
-        </div>
+        )}
 
-        {/* Features Section */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="text-center">
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
+        {/* Oracle Tab */}
+        {activeTab === 'oracle' && (
+          <div className="space-y-8">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">Price Oracle</h2>
+              <p className="text-lg text-gray-600 max-w-3xl mx-auto">
+                Real-time price feeds and time-weighted average calculations for reliable trading data.
+              </p>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Lightning Fast</h3>
-            <p className="text-gray-600">Instant swaps powered by Stellar&apos;s fast settlement times.</p>
+            
+            <OracleChart 
+              connected={connected}
+              publicKey={publicKey}
+            />
           </div>
-          
-          <div className="text-center">
-            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Low Fees</h3>
-            <p className="text-gray-600">Only 0.3% trading fee, the lowest in the market.</p>
-          </div>
-          
-          <div className="text-center">
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Secure</h3>
-            <p className="text-gray-600">Audited smart contracts and non-custodial trading.</p>
-          </div>
-        </div>
+        )}
       </main>
     </div>
   )
