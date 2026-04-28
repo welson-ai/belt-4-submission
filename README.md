@@ -16,7 +16,7 @@ A production-ready Automated Market Maker (AMM) decentralized exchange built on 
 ![My Image](frontend/public/Desktop.png) 
 
 ## Mobile View
-![My Image](frontend/public/mobbile.png) 
+![My Image](frontend/public/mobile.png) 
 
 
 
