@@ -9,7 +9,7 @@
 # Submisssion requirements
 ## CI/CD pipeline running
 
-
+![My Image](frontend/public/cy.png)
 A production-ready Automated Market Maker (AMM) decentralized exchange built on Stellar using Soroban smart contracts.
 
 ## Features
