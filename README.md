@@ -5,12 +5,21 @@
 ![Stellar](https://img.shields.io/badge/stellar-soroban-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
+A production-ready Automated Market Maker (AMM) decentralized exchange built on Stellar using Soroban smart contracts.
 
 # Submisssion requirements
 ## CI/CD pipeline running
 
-![My Image](frontend/public/cy.png)
-A production-ready Automated Market Maker (AMM) decentralized exchange built on Stellar using Soroban smart contracts.
+![My Image](frontend/public/cy.png) 
+
+## Desktop view 
+![My Image](frontend/public/Desktop.png) 
+
+## Mobile View
+![My Image](frontend/public/mobbile.png) 
+
+
+
 
 ## Features
 
